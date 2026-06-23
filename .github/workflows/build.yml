@@ -35,23 +35,28 @@ jobs:
           print('LOADED FROM BAKED WEIGHTS WITH NO NETWORK -> zero-download cold start OK')
           "
 
-      - name: Functional check (server serves a mask)
+      - name: Functional check (in-container, uses the baked deps)
         run: |
-          docker run -d --name s -p 8000:8000 "$IMG"
-          for i in $(seq 1 40); do
-            curl -sf localhost:8000/health | grep -q '"model_loaded":true' && break || sleep 3
-          done
-          curl -s localhost:8000/health; echo
-          python3 - <<'PY'
-          import requests, base64, io
+          docker run -d --name birefnet "$IMG"
+          docker exec birefnet python -c "
+          import requests, base64, io, time
           from PIL import Image
-          im = Image.new("RGB", (128, 128), "white")
-          buf = io.BytesIO(); im.save(buf, "PNG")
+          ok = False
+          for _ in range(40):
+              try:
+                  if requests.get('http://localhost:8000/health', timeout=3).json().get('model_loaded'):
+                      ok = True; break
+              except Exception: pass
+              time.sleep(3)
+          assert ok, 'health never became ready'
+          im = Image.new('RGB', (128, 128), 'white'); buf = io.BytesIO(); im.save(buf, 'PNG')
           b = base64.b64encode(buf.getvalue()).decode()
-          r = requests.post("http://localhost:8000/infer", json={"image": b}, timeout=180)
-          print("infer", r.status_code, "keys", list(r.json().keys()))
-          assert r.status_code == 200, "infer failed"
-          PY
+          r = requests.post('http://localhost:8000/infer', json={'image': b}, timeout=180)
+          print('infer', r.status_code, 'keys', list(r.json().keys()))
+          assert r.status_code == 200, 'infer failed'
+          print('FUNCTIONAL OK')
+          "
+          docker rm -f birefnet
 
       - name: Login + push to ghcr
         run: |
