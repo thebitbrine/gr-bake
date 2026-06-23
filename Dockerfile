@@ -5,7 +5,8 @@ WORKDIR /app
 ARG HF_TOKEN=
 ENV HF_TOKEN=${HF_TOKEN}
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt fastapi uvicorn python-multipart requests pillow hf_transfer timm kornia einops accelerate scipy sentencepiece opencv-python-headless
+RUN grep -ivE '^(torch|torchvision|nvidia-|triton)([=<>!~ ]|$)' requirements.txt > /tmp/req.txt || true
+RUN pip install --no-cache-dir -r /tmp/req.txt fastapi uvicorn python-multipart requests pillow hf_transfer timm kornia einops accelerate scipy sentencepiece opencv-python-headless
 # bake the model weights into the image layer so cold start does NO download:
 RUN python -c "import os; from huggingface_hub import snapshot_download; snapshot_download('ZhengPeng7/BiRefNet', token=os.environ.get('HF_TOKEN') or None)"
 # weights are baked now -> force cache-only at RUNTIME (proves + guarantees zero cold-start download)
